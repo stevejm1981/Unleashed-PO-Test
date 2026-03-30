@@ -17,9 +17,9 @@ receipted. The application executes the following steps:
 1. **GET** the Purchase Order to retrieve the order Guid, supplier, warehouse, and line
    details needed to construct the PUT payload (`serialBatch=true` is included so any
    existing batch data is also returned, though batch numbers are not read from the GET)
-2. **PUT** the Purchase Order with `PendingBatchNumbers` applied to each line — batch
-   numbers come from your configuration, not from the GET response, and remain in Pending
-   state until the PO is receipted
+2. **PUT** each order line individually via `PUT /PurchaseOrders/{orderGuid}/Lines/{lineGuid}`
+   with `PendingBatchNumbers` applied — batch numbers come from your configuration, not the
+   GET response, and remain in Pending state until the PO is receipted
 3. **POST** `/PurchaseOrders/{orderGuid}/Receipt` to receipt the order, converting
    all pending batch numbers to fully receipted batch numbers in Unleashed stock
 4. **GET** the Purchase Order again to confirm the batch numbers are now receipted
@@ -111,21 +111,26 @@ UnleashedPOTest/
 
 ## API Notes
 
-**`serialBatch=true` is included on the GET request.** Without it, `PendingBatchNumbers`
+**`serialBatch=true` is required on the GET request only.** Without it, `PendingBatchNumbers`
 and `BatchNumbers` will not be returned in the response. The GET is used to retrieve order
 structure (Guid, supplier, warehouse, lines) — batch numbers are sourced from configuration
-and applied on the PUT, not read from the GET response.
+and applied on the line PUT, not read from the GET response. There are no query parameters
+on the PUT or POST Receipt endpoints.
+
+**`PendingBatchNumbers` must be set via the line-level PUT endpoint.** The order-level
+`PUT /PurchaseOrders/{orderGuid}` silently ignores batch data and returns 204. Use
+`PUT /PurchaseOrders/{orderGuid}/Lines/{lineGuid}` for each line instead.
+
+**`ReceiptQuantity` must match the total batch quantity.** Unleashed validates that the
+sum of `PendingBatchNumbers` quantities equals `ReceiptQuantity` on the line when the
+Receipt POST is called. A mismatch results in a 400 error.
 
 **Batch numbers are Pending until the PO is receipted.** Setting `PendingBatchNumbers`
-on the PUT does not immediately allocate stock. The POST `/Receipt` call is what confirms
-the allocation and makes the stock available in Unleashed.
-
-**The PUT payload for a Purchase Order is more lenient than Sales Shipments.** You do not
-need to send the complete order payload — only the fields being updated, plus `Supplier`
-and `OrderStatus` which are always required on PUT.
+on the line PUT does not immediately allocate stock. The POST `/Receipt` call is what
+confirms the allocation and makes the stock available in Unleashed.
 
 **The Receipt POST has no request body.** The order Guid in the URL is sufficient.
-Unleashed receipts the order using the `ReceiptQuantity` values already on the lines.
+Unleashed receipts the order using the `ReceiptQuantity` values on the lines.
 
 ---
 
